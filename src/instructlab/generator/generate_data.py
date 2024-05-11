@@ -19,11 +19,15 @@ from rouge_score import rouge_scorer
 import click
 import tqdm
 
+import daft
+
 # Local
 from ..config import DEFAULT_MULTIPROCESSING_START_METHOD
+from ..config import INTEGRATE_WITH_LAKEHOUSE
 from ..utils import chunk_document, read_taxonomy
 from . import utils
 from .utils import GenerateException
+from . import lh_data
 
 DEFAULT_PROMPT_TEMPLATE_MERLINITE = """\
 You are asked to come up with a set of 5 diverse task instructions under {{taxonomy}}{{" for the task \\"%s\\""|format(task_description)  if task_description}}. These task instructions will be given to a GPT model and we will evaluate the GPT model for completing the instructions.
@@ -405,6 +409,7 @@ def generate_data(
                     "system": utils.get_sysprompt(),
                     "user": unescape(user),
                     "assistant": unescape(seed_example["output"]),
+                    "taxonomy_path": seed_example["taxonomy_path"],
                 }
             )
         except TypeError as exc:
@@ -413,8 +418,26 @@ def generate_data(
                 fg="red",
             )
             raise click.exceptions.Exit(1)
-
+    #######
     name = Path(model_name).stem  # Just in case it is a file path
+    generated_at = datetime.now()
+    namespace = 'instructlab3'
+    if len(test_data) > 0:
+      df = daft.from_pylist(test_data)
+      #df = df.with_column('taxonomy', daft.lit(''))
+      df = df.with_column('generated_at', daft.lit(generated_at).cast(daft.DataType.timestamp(timeunit='us', timezone='UTC')))
+      df = df.with_column('doc_id', lh_data.hash_data(df['user']))
+      tab = f'{namespace}.{name}_seed'
+      tab = tab.lower().replace('-', '_')
+      lh_data.create_table(tab)
+      lh_data.append(df, tab)
+      df2 = df.select('doc_id', 'user', 'taxonomy_path')
+      lh_data.process_annotation(df2, 'user', tab, generated_at )
+      df3 =  df.select('doc_id', 'assistant', 'taxonomy_path')
+      lh_data.process_annotation(df3, 'assistant', tab, generated_at)
+    
+    ######
+    #name = Path(model_name).stem  # Just in case it is a file path
     date_suffix = datetime.now().replace(microsecond=0).isoformat().replace(":", "_")
     output_file = f"generated_{name}_{date_suffix}.json"
     output_file_train = f"train_{name}_{date_suffix}.jsonl"
@@ -545,6 +568,24 @@ def generate_data(
                 }
             )
         # utils.jdump(train_data, os.path.join(output_dir, output_file_train))
+
+        ##########
+        if len(train_data) == 0:
+          continue; 
+        df = daft.from_pylist(train_data)
+        df = df.with_column('taxonomy_path', daft.lit(selected_taxonomy))
+        df = df.with_column('generated_at', daft.lit(generated_at).cast(daft.DataType.timestamp(timeunit='us', timezone='UTC')))
+        df = df.with_column('doc_id', lh_data.hash_data(df['user']))
+        tab = f'{namespace}.{name}_generated'
+        tab = tab.lower().replace('-', '_')
+        lh_data.create_table(tab) 
+        lh_data.append(df, tab)
+        df2 = df.select('doc_id', 'user', 'taxonomy_path')
+        lh_data.process_annotation(df2, 'user', tab, generated_at)
+        df3 =  df.select('doc_id', 'assistant', 'taxonomy_path')
+        lh_data.process_annotation(df3, 'assistant', tab, generated_at)
+        
+        #########
         with open(
             os.path.join(output_dir, output_file_train), "w", encoding="utf-8"
         ) as outfile:
@@ -558,7 +599,18 @@ def generate_data(
             for entry in test_data:
                 json.dump(entry, outfile, ensure_ascii=False)
                 outfile.write("\n")
-
+    '''
+    if len(test_data) > 0:
+      df = daft.from_pylist(test_data)
+      df = df.with_column('taxonomy', daft.lit(''))
+      df = df.with_column('generated_at', daft.lit(generated_at).cast(daft.DataType.timestamp(timeunit='us', timezone='UTC')))
+      df = df.with_column('doc_id', lh_data.hash_data(df['user']))
+      tab = f'instructlab.{name}_seed'
+      tab = tab.lower().replace('-', '_')
+      lh_data.create_table(tab)
+      lh_data.append(df, tab)
+      df.show()
+    '''
     progress_bar.close()
 
     if total_discarded or total_rouged:
