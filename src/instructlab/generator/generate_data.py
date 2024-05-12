@@ -23,7 +23,7 @@ import daft
 
 # Local
 from ..config import DEFAULT_MULTIPROCESSING_START_METHOD
-from ..config import INTEGRATE_WITH_LAKEHOUSE
+#from ..config import INTEGRATE_WITH_LAKEHOUSE
 from ..utils import chunk_document, read_taxonomy
 from . import utils
 from .utils import GenerateException
