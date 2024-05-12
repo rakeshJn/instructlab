@@ -154,10 +154,10 @@ def process_annotation(df2, field: str, src_table: str, generated_at):
   df2 = df2.exclude('doc_id')
   df2 = df2.exclude(field)
   df2 = df2.exclude('taxonomy_path')
-  df2.show()
+  #df2.show()
   df2 = df2.with_columns({'doc_id': explode_json(df2['annotation'], 'doc_id') , 'entity_group': explode_json(df2['annotation'], 'entity_group'), 'text': explode_json(df2['annotation'], 'text'), 'entity': explode_json(df2['annotation'], 'entity'), 'score': explode_json(df2['annotation'], 'score'), 'taxonomy_path': explode_json(df2['annotation'], 'taxonomy_path'), })  # 'meta': explode_json(df2['annotation'], 'meta'), 'span': explode_json(df2['annotation'], 'span')})
   df2 = df2.with_column('generated_at', daft.lit(generated_at).cast(daft.DataType.timestamp(timeunit='us', timezone='UTC')))
-  df2.show()
+  #df2.show()
   ann_tab = f'{src_table}_ann_{field}'
   ann_tab = ann_tab.lower().replace('-', '_')
   create_annotation_table(ann_tab)
